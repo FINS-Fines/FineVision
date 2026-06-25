@@ -24,6 +24,7 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <fmt/printf.h>
+#include <fins/log_entry.hpp>
 #include <fins/utils/logger.hpp>
 
 namespace fins {
@@ -48,14 +49,6 @@ namespace fins {
     constexpr FmtWithLoc(const T &s, const char *f = "", uint32_t l = 0) : fmt_str(s), file(f), line(l) {}
   };
 #endif
-
-  struct LogEntry {
-    double timestamp;
-    std::string level;
-    std::string message;
-    std::string file;
-    uint32_t line;
-  };
 
   inline std::atomic<NodeLogLevel> &get_log_level_ref() {
     static std::atomic<NodeLogLevel> level{NodeLogLevel::INFO};

@@ -8,31 +8,35 @@
 
 #pragma once
 
-#include <algorithm>
+#include <string>
+#include <vector>
+#include <map>
+#include <memory>
+#include <functional>
+#include <typeindex>
+
 #include <fins/msg.hpp>
+#include <fins/log_entry.hpp>
 #include <fins/node_log.hpp>
 #include <fins/service/service_manager.hpp>
 #include <fins/service/service_tags.hpp>
 #include <fins/service/service_traits.hpp>
-#include <fins/action/action_manager.hpp>
 #include <fins/action/action_tags.hpp>
 #include <fins/action/action_traits.hpp>
-#include <fins/third_party/json.hpp>
+#include <fins/action/action_manager.hpp>
 #include <fins/type/string_convert.hpp>
 #include <fins/type/type_register.hpp>
 #include <fins/utils/time.hpp>
-#include <fins/utils/logger.hpp>
 #include <fins/utils/performance_recorder.hpp>
 #include <fins/server/parameter_server.hpp>
-#include <cassert>
-#include <functional>
-#include <map>
-#include <stdexcept>
-#include <vector>
 
 namespace fins {
+  class NodeLogger; // 🌟 前置声明，避免在此处展开 fmt 模板
+  class ScopedSegmentTimer;
+  class ServiceHandler;
+}
 
-  using json = nlohmann::json;
+namespace fins {
 
   struct PortInfo {
     std::string name;
@@ -65,8 +69,8 @@ namespace fins {
   };
 
   enum class ScheduleQueue {
-    FCFS,  // First Come First Serve
-    LGFS   // Last Got First Serve (drop new if busy)
+    FCFS,
+    LGFS
   };
 
   struct ScheduleInfo {
@@ -94,78 +98,7 @@ namespace fins {
 
     ScheduleInfo schedule;
 
-    nlohmann::json to_json() const {
-      nlohmann::json j;
-      j["name"] = name;
-      j["description"] = description;
-      j["category"] = category;
-      j["source"] = source;
-      j["package_name"] = package_name;
-      j["version"] = version;
-
-      auto map_ports = [](const std::vector<PortInfo> &ports) {
-        nlohmann::json arr = nlohmann::json::array();
-        for (size_t i = 0; i < ports.size(); ++i) {
-          arr.push_back({
-              {"id", i},
-              {"name", ports[i].name},
-              {"type", ports[i].type},
-          });
-        }
-        return arr;
-      };
-
-      auto map_parameters = [](const std::vector<ParameterInfo> &params) {
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto &e: params) {
-          arr.push_back({
-              {"name", e.name},
-              {"type", e.type},
-              {"default_value", e.default_value},
-          });
-        }
-        return arr;
-      };
-
-      auto map_services = [](const std::vector<ServiceInfo> &svcs) {
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto &s: svcs) {
-          arr.push_back({{"name", s.name}, {"request_type", s.request_type}, {"response_type", s.response_type}});
-        }
-        return arr;
-      };
-
-      auto map_actions = [](const std::vector<ActionInfo> &acts) {
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto &a: acts) {
-          arr.push_back({{"name", a.name}, {"goal_type", a.goal_type}, {"feedback_type", a.feedback_type}});
-        }
-        return arr;
-      };
-
-      j["inputs"] = map_ports(inputs);
-      j["outputs"] = map_ports(outputs);
-      j["parameters"] = map_parameters(parameters);
-      j["clients"] = map_services(clients);
-      j["servers"] = map_services(servers);
-      j["commanders"] = map_actions(commanders);
-      j["actors"] = map_actions(actors);
-      
-      std::string priority_str;
-      switch (schedule.priority) {
-        case SchedulePriority::Urgent: priority_str = "Urgent"; break;
-        case SchedulePriority::High: priority_str = "High"; break;
-        case SchedulePriority::Medium: priority_str = "Medium"; break;
-        case SchedulePriority::Low: priority_str = "Low"; break;
-      }
-      std::string queue_str = (schedule.queue == ScheduleQueue::FCFS) ? "FCFS" : "LGFS";
-      j["schedule"] = {
-        {"priority", priority_str},
-        {"queue", queue_str}
-      };
-      
-      return j;
-    }
+    std::string to_json_string() const;
   };
 
   class INode {
@@ -174,32 +107,22 @@ namespace fins {
     virtual void set_publisher(std::function<void(int, AnyMsg)> pub_func) = 0;
     virtual void set_connection_checker(std::function<bool(int)> check_func) = 0;
 
-    virtual void define() {
-      FINS_LOG_WARN("[Node {} Warning] define() not implemented. Using default empty implementation.", get_meta().name);
-    }
-    virtual void initialize() {
-      FINS_LOG_WARN("[Node {} Warning] initialize() not implemented. Using default empty implementation.", get_meta().name);
-    }
-
-    virtual void run() {
-      FINS_LOG_WARN("[Node {} Warning] run() not implemented. Using default empty implementation.", get_meta().name);
-    }
-    virtual void pause() {
-      FINS_LOG_WARN("[Node {} Warning] pause() not implemented. Using default empty implementation.", get_meta().name);
-    } 
-    virtual void reset() {
-      FINS_LOG_WARN("[Node {} Warning] reset() not implemented. Using default empty implementation.", get_meta().name);
-    }
+    virtual void define();
+    virtual void initialize();
+    virtual void run();
+    virtual void pause(); 
+    virtual void reset();
+    
     virtual void on_input(int port, const AnyMsg &msg) = 0;
     virtual void update_parameter(const std::string &name, const std::string &value) = 0;
     virtual NodeMeta get_meta() const = 0;
+    
     virtual ScopedSegmentTimer recorder(const std::string& label, AcqTime acq_time) = 0;
     virtual ScopedSegmentTimer recorder(const std::string& label, double acq_time_sec) = 0;
     virtual std::vector<LogEntry> get_logs() = 0;
 
     virtual void set_client_topic(const std::string &name, const std::string &topic) = 0;
     virtual void set_server_topic(const std::string &name, const std::string &topic) = 0;
-
     virtual void set_commander_topic(const std::string &name, const std::string &topic) = 0;
     virtual void set_actor_topic(const std::string &name, const std::string &topic) = 0;
   };
@@ -231,11 +154,12 @@ namespace fins {
   template<typename... InArgs, typename Ret, typename Class, typename Func>
   struct TypedServerBinder<std::tuple<InArgs...>, Ret, Class, Func> {
     static void bind(const std::string& topic, Class* instance, Func func) {
-      auto delegate = FastDelegate<Ret, InArgs...>::template from_member<Class>(instance, func);
-      FINS_SERVICE_MANAGER.register_typed_service<Ret, InArgs...>(topic, std::move(delegate));
+      std::function<Ret(InArgs...)> bound_fn = [instance, func](InArgs... args) -> Ret {
+        return (instance->*func)(std::forward<InArgs>(args)...);
+      };
+      FINS_SERVICE_MANAGER.register_typed_service<Ret, InArgs...>(topic, std::move(bound_fn));
     }
   };
-
 
   class Node : public INode {
   protected:
@@ -253,7 +177,7 @@ namespace fins {
     std::map<std::string, std::string> client_remaps_;
 
     struct ServerHandle {
-      ServiceManager::ServiceCallback callback;
+      std::function<std::any(const std::vector<std::any> &)> callback; 
       std::type_index input_id = std::type_index(typeid(void));
       std::type_index output_id = std::type_index(typeid(void));
       std::unique_ptr<ServiceHandler> handler;
@@ -262,8 +186,8 @@ namespace fins {
     std::map<std::string, std::string> server_remaps_;
 
     struct CommanderHandle {
-      ActionManager::ResultCallback result_callback;
-      ActionManager::FeedbackCallback feedback_callback;
+      std::function<void(ActionState)> result_callback;
+      std::function<void(const std::vector<std::any> &)> feedback_callback;
       std::type_index goal_type_id = std::type_index(typeid(void));
       std::type_index feedback_type_id = std::type_index(typeid(void));
     };
@@ -271,7 +195,7 @@ namespace fins {
     std::map<std::string, std::string> commander_remaps_;
 
     struct ActorHandle {
-      ActionManager::GoalCallback goal_callback;
+      std::function<void(std::shared_ptr<ActionSessionBase>, const std::vector<std::any> &)> goal_callback;
       std::type_index goal_type_id = std::type_index(typeid(void));
       std::type_index feedback_type_id = std::type_index(typeid(void));
     };
@@ -281,129 +205,38 @@ namespace fins {
   public:
     std::shared_ptr<NodeLogger> logger;
 
-    Node() : logger(std::make_shared<NodeLogger>()) {
-#ifdef PKG_SOURCE
-      std::string src = PKG_SOURCE;
-      if (src.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-@.") !=
-          std::string::npos) {
-        throw std::runtime_error("[Node " + meta_.name + "]: Invalid source format in PKG_SOURCE: " + src);
-      }
-      meta_.source = src;
-#endif
-#ifdef PKG_NAME
-      meta_.package_name = PKG_NAME;
-#endif
-    }
+    Node();
+    void set_publisher(std::function<void(int, AnyMsg)> pub_func) override;
+    void set_connection_checker(std::function<bool(int)> check_func) override;
+    void on_input(int port, const AnyMsg &msg) override;
+    void update_parameter(const std::string &name, const std::string &value) override;
+    std::vector<LogEntry> get_logs() override;
+    NodeMeta get_meta() const override;
 
-    void set_publisher(std::function<void(int, AnyMsg)> pub_func) override { publisher_ = pub_func; }
+    ScopedSegmentTimer recorder(const std::string& label, AcqTime acq_time) override;
+    ScopedSegmentTimer recorder(const std::string& label, double acq_time_sec) override;
 
-    void set_connection_checker(std::function<bool(int)> check_func) override { connection_checker_ = check_func; }
-
-    void on_input(int port, const AnyMsg &msg) override {
-      if (input_handlers_.find(port) != input_handlers_.end()) {
-        input_handlers_[port](msg);
-      }
-    }
-
-    void update_parameter(const std::string &name, const std::string &value) override {
-      if (parameter_handlers_.find(name) != parameter_handlers_.end()) {
-        try {
-          parameter_handlers_[name](value);
-        } catch (const std::exception &e) {
-          FINS_LOG_ERROR("[Node {} Error] Update parameter '{}' failed: {}", meta_.name, name, e.what());
-        }
-      } else {
-        FINS_LOG_WARN("[Node {} Warning] Unknown parameter: {}", meta_.name, name);
-      }
-    }
-
-    std::vector<LogEntry> get_logs() override { return logger->get_and_clear_logs(); }
-
-    NodeMeta get_meta() const override { return meta_; }
-
-    ScopedSegmentTimer recorder(const std::string& label, AcqTime acq_time) override {
-      return ScopedSegmentTimer(this->meta_.name, label, acq_time);
-    }
-    ScopedSegmentTimer recorder(const std::string& label, double acq_time_sec) override {
-      return ScopedSegmentTimer(this->meta_.name, label, acq_time_sec);
-    }
-
-    void initialize() override {}
-
-    void set_client_topic(const std::string &key, const std::string &topic) override { client_remaps_[key] = topic; }
-
-    void set_server_topic(const std::string &key, const std::string &topic) override {
-      server_remaps_[key] = topic;
-
-      auto it = server_handles_.find(key);
-      if (it != server_handles_.end()) {
-        FINS_LOG_INFO("[Node] Applying Server Remap: Internal '{}' -> Topic '{}'", key, topic);
-        if (it->second.handler) {
-          // Clone the handler if possible, or move it if it's a one-time thing.
-          // Since it's unique_ptr, we might need a better way if multiple topics map to same internal key.
-          // But usually it's 1-to-1 or just one remap.
-          // For now, let's assume we can move it or we need a way to register it.
-          // Actually, register_service_handler takes ownership.
-          // If it was already registered, it might be gone.
-          // Let's check how TypedServiceHandler is created. It's created in register_server.
-          // We should probably store a factory or just the handler and use it.
-          // For now, let's just register it.
-          FINS_SERVICE_MANAGER.register_service_handler(topic, std::move(it->second.handler), it->second.input_id, it->second.output_id);
-        } else if (it->second.callback) {
-          FINS_SERVICE_MANAGER.register_service(topic, it->second.callback, it->second.input_id, it->second.output_id);
-        }
-      }
-    }
-
-    void set_commander_topic(const std::string &key, const std::string &topic) override {
-      commander_remaps_[key] = topic;
-      auto it = commander_handles_.find(key);
-      if (it != commander_handles_.end()) {
-        FINS_LOG_INFO("[Node] Applying Commander Remap: Internal '{}' -> Topic '{}'", key, topic);
-        FINS_ACTION_MANAGER.register_commander(topic, it->second.goal_type_id, it->second.feedback_type_id,
-                                                it->second.result_callback, it->second.feedback_callback);
-      }
-    }
-
-    void set_actor_topic(const std::string &key, const std::string &topic) override {
-      actor_remaps_[key] = topic;
-      auto it = actor_handles_.find(key);
-      if (it != actor_handles_.end()) {
-        FINS_LOG_INFO("[Node] Applying Actor Remap: Internal '{}' -> Topic '{}'", key, topic);
-        FINS_ACTION_MANAGER.register_actor(topic, it->second.goal_type_id, it->second.feedback_type_id,
-                                            it->second.goal_callback);
-      }
-    }
+    void set_client_topic(const std::string &key, const std::string &topic) override;
+    void set_server_topic(const std::string &key, const std::string &topic) override;
+    void set_commander_topic(const std::string &key, const std::string &topic) override;
+    void set_actor_topic(const std::string &key, const std::string &topic) override;
 
   protected:
-    void set_name(const std::string &name) { meta_.name = name; }
-
-    void set_description(const std::string &desc) { meta_.description = desc; }
-
-    void set_category(const std::string &cat) { meta_.category = cat; }
-
-    void set_version(const std::string &ver) { meta_.version = ver; }
-
-    void set_basics(const std::string &name, const std::string &desc, const std::string &cat,
-                    const std::string &ver = "default") {
-      set_name(name);
-      set_description(desc);
-      set_category(cat);
-      set_version(ver);
-    }
+    void set_name(const std::string &name);
+    void set_description(const std::string &desc);
+    void set_category(const std::string &cat);
+    void set_version(const std::string &ver);
+    void set_basics(const std::string &name, const std::string &desc, const std::string &cat, const std::string &ver = "default");
 
     template<int Port, typename T, typename ClassType>
     void register_input(const std::string &name, void (ClassType::*method)(const Msg<T> &)) {
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(Port))
         meta_.inputs.resize(Port + 1);
       meta_.inputs[Port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(typed_msg);
       };
@@ -412,14 +245,12 @@ namespace fins {
     template<int Port, typename T, typename ClassType>
     void register_input(const std::string &name, void (ClassType::*method)(const T &, AcqTime)) {
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(Port))
         meta_.inputs.resize(Port + 1);
       meta_.inputs[Port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data, typed_msg.acq_time);
       };
@@ -428,14 +259,12 @@ namespace fins {
     template<int Port, typename T, typename ClassType>
     void register_input(const std::string &name, void (ClassType::*method)(const T &)) {
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(Port))
         meta_.inputs.resize(Port + 1);
       meta_.inputs[Port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data);
       };
@@ -445,16 +274,13 @@ namespace fins {
     void register_input(const std::string &name, void (ClassType::*method)(const Msg<T> &)) {
       int port = next_input_port_++;
       input_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(port))
         meta_.inputs.resize(port + 1);
       meta_.inputs[port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(typed_msg);
       };
@@ -464,16 +290,13 @@ namespace fins {
     void register_input(const std::string &name, void (ClassType::*method)(const T &, AcqTime)) {
       int port = next_input_port_++;
       input_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(port))
         meta_.inputs.resize(port + 1);
       meta_.inputs[port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data, typed_msg.acq_time);
       };
@@ -483,26 +306,21 @@ namespace fins {
     void register_input(const std::string &name, void (ClassType::*method)(const T &)) {
       int port = next_input_port_++;
       input_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(port))
         meta_.inputs.resize(port + 1);
       meta_.inputs[port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data);
       };
     }
-
 
     template<int Port, typename T>
     void register_output(const std::string &name) {
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.outputs.size() <= static_cast<size_t>(Port))
         meta_.outputs.resize(Port + 1);
       meta_.outputs[Port] = {name, type_str};
@@ -512,9 +330,7 @@ namespace fins {
     void register_output(const std::string &name) {
       int port = next_output_port_++;
       output_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.outputs.size() <= static_cast<size_t>(port))
         meta_.outputs.resize(port + 1);
       meta_.outputs[port] = {name, type_str};
@@ -522,9 +338,6 @@ namespace fins {
 
     template<typename T>
     void register_parameter(const std::string &name, std::function<void(const T &)> handler) {
-
-      std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       parameter_handlers_[name] = [handler](const std::string &str_val) {
         T val = FINS_TYPE_REGISTER.string_convert<T>(str_val);
         handler(val);
@@ -533,10 +346,8 @@ namespace fins {
 
     template<typename T, typename ClassType>
     void register_parameter(const std::string &name, void (ClassType::*method)(const T &), T default_value = T()) {
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
       meta_.parameters.push_back({name, type_str, std::to_string(default_value)});
-
       parameter_handlers_[name] = [this, method](const std::string &str_val) {
         T val = FINS_TYPE_REGISTER.string_convert<T>(str_val);
         (static_cast<ClassType *>(this)->*method)(val);
@@ -574,11 +385,7 @@ namespace fins {
     template<typename T>
     void send_ptr(const std::string &name, std::shared_ptr<T> data, AcqTime ts = fins::now()) {
       auto it = output_name_to_port_.find(name);
-      if (it == output_name_to_port_.end()) {
-        FINS_LOG_ERROR("[Node] Output port '{}' not found in node '{}'", name, meta_.name);
-        assert(false && "Output port not found");
-        return;
-      }
+      if (it == output_name_to_port_.end()) return;
       if (publisher_) {
         AnyMsg msg(data, ts);
         publisher_(it->second, msg);
@@ -588,11 +395,7 @@ namespace fins {
     template<typename T>
     void send(const std::string &name, const T &data, AcqTime ts = fins::now()) {
       auto it = output_name_to_port_.find(name);
-      if (it == output_name_to_port_.end()) {
-        FINS_LOG_ERROR("[Node] Output port '{}' not found in node '{}'", name, meta_.name);
-        assert(false && "Output port not found");
-        return;
-      }
+      if (it == output_name_to_port_.end()) return;
       if (publisher_) {
         auto data_ptr = std::make_shared<T>(data);
         AnyMsg msg(data_ptr, ts);
@@ -678,7 +481,6 @@ namespace fins {
       using InTuple = typename Traits::InputTuple;
       using OutTuple = typename Traits::OutputTuple;
       using RetType = typename Traits::ReturnType;
-
       using ClassType = typename member_func_traits<std::decay_t<Func>>::class_type;
 
       std::string req_str = tuple_types_to_string<InTuple>();
@@ -700,11 +502,7 @@ namespace fins {
           std::decay_t<Func> func_;
       public:
           TypedServiceHandler(ClassType* inst, Func f) : instance_(inst), func_(f) {}
-
           std::any invoke(const std::any* args, size_t count) override {
-              if (count != std::tuple_size_v<InTuple>) {
-                  throw std::runtime_error("Server received wrong number of arguments");
-              }
               return call_member_array_impl<InTuple, RetType, ClassType>(
                   func_, instance_, args, std::make_index_sequence<std::tuple_size_v<InTuple>>{}
               );
@@ -712,15 +510,16 @@ namespace fins {
       };
 
       auto handler = std::make_unique<TypedServiceHandler>(static_cast<ClassType*>(this), callback_ptr);
-      server_handles_[name] = {nullptr, std::type_index(typeid(InTuple)), std::type_index(typeid(OutTuple)), std::move(handler)};
+      register_server_handle(name, std::type_index(typeid(InTuple)), std::type_index(typeid(OutTuple)), std::move(handler));
     }
+
+    void register_server_handle(const std::string &name, std::type_index in_id, std::type_index out_id, std::unique_ptr<ServiceHandler> handler);
 
     template<typename... Args, typename ResultFunc, typename FeedbackFunc>
     void register_commander(const std::string &name, ResultFunc &&result_callback, FeedbackFunc &&feedback_callback) {
       using Traits = ActionTraits<Args...>;
       using GoalTuple = typename Traits::GoalTuple;
       using FeedbackTuple = typename Traits::FeedbackTuple;
-
       using ResultClassType = typename member_func_traits<std::decay_t<ResultFunc>>::class_type;
       using FeedbackClassType = typename member_func_traits<std::decay_t<FeedbackFunc>>::class_type;
 
@@ -734,26 +533,20 @@ namespace fins {
       };
 
       auto feedback_wrapper = [this, func = feedback_callback](const std::vector<std::any> &args) {
-        if (args.size() != std::tuple_size_v<FeedbackTuple>) {
-          throw std::runtime_error("Commander received wrong number of feedback arguments");
-        }
-        call_feedback_impl<FeedbackTuple, FeedbackClassType>(func, args,
-                                                              std::make_index_sequence<std::tuple_size_v<FeedbackTuple>>{});
+        call_feedback_impl<FeedbackTuple, FeedbackClassType>(func, args, std::make_index_sequence<std::tuple_size_v<FeedbackTuple>>{});
       };
 
-      commander_handles_[name] = {result_wrapper, feedback_wrapper, std::type_index(typeid(GoalTuple)),
-                                   std::type_index(typeid(FeedbackTuple))};
-
-      FINS_ACTION_MANAGER.register_commander(name, std::type_index(typeid(GoalTuple)),
-                                              std::type_index(typeid(FeedbackTuple)), result_wrapper, feedback_wrapper);
+      register_commander_handle(name, std::type_index(typeid(GoalTuple)), std::type_index(typeid(FeedbackTuple)), result_wrapper, feedback_wrapper);
     }
-    
+
+    void register_commander_handle(const std::string &name, std::type_index goal_id, std::type_index feedback_id, 
+                                   std::function<void(ActionState)> res_cb, std::function<void(const std::vector<std::any>&)> fb_cb);
+
     template<typename... Args, typename GoalFunc>
     void register_actor(const std::string &name, GoalFunc &&goal_callback) {
       using Traits = ActionTraits<Args...>;
       using GoalTuple = typename Traits::GoalTuple;
       using FeedbackTuple = typename Traits::FeedbackTuple;
-
       using GoalClassType = typename member_func_traits<std::decay_t<GoalFunc>>::class_type;
 
       std::string goal_str = tuple_types_to_string<GoalTuple>();
@@ -761,79 +554,33 @@ namespace fins {
 
       meta_.actors.push_back({name, goal_str, feedback_str});
 
-      auto goal_wrapper = [this, func = goal_callback](std::shared_ptr<ActionSessionBase> session,
-                                                        const std::vector<std::any> &args) {
-        if (args.size() != std::tuple_size_v<GoalTuple>) {
-          throw std::runtime_error("Actor received wrong number of goal arguments");
-        }
-        call_goal_impl_with_session<GoalTuple, GoalClassType>(session, func, args,
-                                                               std::make_index_sequence<std::tuple_size_v<GoalTuple>>{});
+      auto goal_wrapper = [this, func = goal_callback](std::shared_ptr<ActionSessionBase> session, const std::vector<std::any> &args) {
+        call_goal_impl_with_session<GoalTuple, GoalClassType>(session, func, args, std::make_index_sequence<std::tuple_size_v<GoalTuple>>{});
       };
 
-      actor_handles_[name] = {goal_wrapper, std::type_index(typeid(GoalTuple)),
-                               std::type_index(typeid(FeedbackTuple))};
-
-      FINS_ACTION_MANAGER.register_actor(name, std::type_index(typeid(GoalTuple)),
-                                          std::type_index(typeid(FeedbackTuple)), goal_wrapper);
+      register_actor_handle(name, std::type_index(typeid(GoalTuple)), std::type_index(typeid(FeedbackTuple)), goal_wrapper);
     }
+
+    void register_actor_handle(const std::string &name, std::type_index goal_id, std::type_index feedback_id, 
+                               std::function<void(std::shared_ptr<ActionSessionBase>, const std::vector<std::any>&)> goal_cb);
 
     template<typename... GoalArgs>
     std::shared_ptr<ActionSessionBase> create_action(const std::string &name, GoalArgs &&...goal_args) {
       std::vector<std::any> type_erased_args;
-      type_erased_args.reserve(sizeof...(goal_args));
       (type_erased_args.push_back(std::any(std::forward<GoalArgs>(goal_args))), ...);
-
-      auto cmd_it = commander_handles_.find(name);
-      if (cmd_it == commander_handles_.end()) {
-        throw std::runtime_error("Commander '" + name + "' not registered");
-      }
-
-      std::string actual_topic = name;
-      if (commander_remaps_.count(name)) {
-        actual_topic = commander_remaps_[name];
-      }
-
-      return FINS_ACTION_MANAGER.create_action_session(actual_topic, std::move(type_erased_args),
-                                                        cmd_it->second.goal_type_id, cmd_it->second.feedback_type_id);
+      return create_action_impl(name, std::move(type_erased_args));
     }
 
     template<typename... GoalArgs>
     std::shared_ptr<ActionSessionBase> create_action(const std::string &name, const GoalArgs &...goal_args) {
       std::vector<std::any> type_erased_args;
-      type_erased_args.reserve(sizeof...(goal_args));
       (type_erased_args.push_back(std::any(goal_args)), ...);
-
-      auto cmd_it = commander_handles_.find(name);
-      if (cmd_it == commander_handles_.end()) {
-        throw std::runtime_error("Commander '" + name + "' not registered");
-      }
-
-      std::string actual_topic = name;
-      if (commander_remaps_.count(name)) {
-        actual_topic = commander_remaps_[name];
-      }
-
-      return FINS_ACTION_MANAGER.create_action_session(actual_topic, std::move(type_erased_args),
-                                                        cmd_it->second.goal_type_id, cmd_it->second.feedback_type_id);
+      return create_action_impl(name, std::move(type_erased_args));
     }
 
-    ActionState get_action_state(const std::string &name) {
-      std::string actual_topic = name;
-      if (commander_remaps_.count(name)) {
-        actual_topic = commander_remaps_[name];
-      }
-
-      return FINS_ACTION_MANAGER.get_action_state(actual_topic);
-    }
-
-    void cancel_action(const std::string &name) {
-      std::string actual_topic = name;
-      if (commander_remaps_.count(name)) {
-        actual_topic = commander_remaps_[name];
-      }
-
-      FINS_ACTION_MANAGER.cancel_action(actual_topic);
-    }
+    std::shared_ptr<ActionSessionBase> create_action_impl(const std::string &name, std::vector<std::any> args);
+    ActionState get_action_state(const std::string &name);
+    void cancel_action(const std::string &name);
 
   private:
     template<typename InTuple, typename RetType, typename ClassType, typename Func, size_t... Is>
@@ -846,19 +593,6 @@ namespace fins {
         }
     }
 
-    template<typename InTuple, typename RetType, typename ClassType, typename Func, size_t... Is>
-    std::any call_member_impl(Func func, const std::vector<std::any> &args, std::index_sequence<Is...>) {
-      auto typed_args = std::make_tuple(std::any_cast<std::tuple_element_t<Is, InTuple>>(args[Is])...);
-
-      if constexpr (std::is_void_v<RetType>) {
-        (static_cast<ClassType *>(this)->*func)(std::get<Is>(typed_args)...);
-        return std::any();
-      } else {
-        RetType ret = (static_cast<ClassType *>(this)->*func)(std::get<Is>(typed_args)...);
-        return std::any(ret);
-      }
-    }
-
     template<typename FeedbackTuple, typename ClassType, typename Func, size_t... Is>
     void call_feedback_impl(Func func, const std::vector<std::any> &args, std::index_sequence<Is...>) {
       auto typed_args = std::make_tuple(std::any_cast<std::tuple_element_t<Is, FeedbackTuple>>(args[Is])...);
@@ -866,79 +600,24 @@ namespace fins {
     }
 
     template<typename GoalTuple, typename ClassType, typename Func, size_t... Is>
-    void call_goal_impl_with_session(std::shared_ptr<ActionSessionBase> session, Func func,
-                                      const std::vector<std::any> &args, std::index_sequence<Is...>) {
+    void call_goal_impl_with_session(std::shared_ptr<ActionSessionBase> session, Func func, const std::vector<std::any> &args, std::index_sequence<Is...>) {
       auto typed_args = std::make_tuple(std::any_cast<std::tuple_element_t<Is, GoalTuple>>(args[Is])...);
       (static_cast<ClassType *>(this)->*func)(session, std::get<Is>(typed_args)...);
     }
   };
 
-
   class NodeFactory {
   public:
     using CreatorFunc = std::function<INode *()>;
 
-    static NodeFactory &get_instance() {
-      static NodeFactory instance;
-      return instance;
-    }
-
-    void register_node(const NodeMeta &meta, CreatorFunc creator) {
-      std::string unique_name = meta.source + "/" + meta.name + "@" + meta.version;
-      
-      auto it = creators_.find(unique_name);
-      if (it != creators_.end()) {
-        FINS_LOG_ERROR("[NodeFactory] Duplicate node name detected in package '{}': '{}' (version: {}). "
-                       "The second registration will overwrite the first.",
-                       meta.source, meta.name, meta.version);
-        creators_[unique_name] = creator;
-        metas_[unique_name] = meta;
-      } else {
-        creators_[unique_name] = creator;
-        metas_[unique_name] = meta;
-        names_.push_back(unique_name);
-        FINS_LOG_DEBUG("[NodeFactory] Registered new node: {}", unique_name);
-      }
-    }
-
-    void print_registered_nodes() {
-      FINS_LOG_INFO("[NodeFactory] Registered Nodes:");
-      for (const auto &name: names_) {
-        FINS_LOG_INFO(" - {}", name);
-      }
-    }
-
-    INode *create(const std::string &name) {
-      if (creators_.find(name) != creators_.end()) {
-        INode *node = creators_[name]();
-        node->define();
-        return node;
-      }
-      return nullptr;
-    }
-
-    size_t count() const { return names_.size(); }
-
-    const char *get_name(size_t index) const {
-      if (index < names_.size())
-        return names_[index].c_str();
-      return nullptr;
-    }
-
-    std::string get_json(const std::string &name) {
-      if (metas_.find(name) != metas_.end()) {
-        return metas_[name].to_json().dump();
-      }
-      return "{}";
-    }
-
-    json get_capabilities() const {
-      json caps = json::object();
-      for (const auto &pair: metas_) {
-        caps[pair.first] = pair.second.to_json();
-      }
-      return caps;
-    }
+    static NodeFactory &get_instance();
+    void register_node(const NodeMeta &meta, CreatorFunc creator);
+    void print_registered_nodes();
+    INode *create(const std::string &name);
+    size_t count() const;
+    const char *get_name(size_t index) const;
+    std::string get_json(const std::string &name);
+    std::string get_capabilities_json() const;
 
   private:
     std::map<std::string, CreatorFunc> creators_;
@@ -954,10 +633,8 @@ namespace fins {
     struct Register_##UserClass {                                                                                 \
       Register_##UserClass() {                                                                                    \
         auto temp_ptr = std::make_unique<UserClass>();                                                            \
-                                                                                                                  \
         temp_ptr->define();                                                                                       \
         fins::NodeMeta meta = temp_ptr->get_meta();                                                               \
-                                                                                                                  \
         fins::NodeFactory::get_instance().register_node(meta, []() -> fins::INode * { return new UserClass(); }); \
       }                                                                                                           \
     };                                                                                                            \

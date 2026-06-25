@@ -235,7 +235,7 @@ namespace fins {
 #ifndef FINS_STATIC_BUILD
     json get_capabilities() const { return capabilities_cache_; }
 #else
-    json get_capabilities() const { return FINS_NODE_FACTORY.get_capabilities(); }
+    json get_capabilities() const { return json::parse(FINS_NODE_FACTORY.get_capabilities_json()); }
 #endif
 
     std::string get_dataflow_json() const { return last_dataflow_json_; }
