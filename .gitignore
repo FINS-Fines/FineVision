@@ -68,3 +68,5 @@ log/
 build/
 resource/
 test/
+
+doc/

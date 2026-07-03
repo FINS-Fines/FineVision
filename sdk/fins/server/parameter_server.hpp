@@ -80,6 +80,26 @@ namespace fins {
     }
   };
 
+  /**
+   * @brief 参数查询结果（流式 API） / Parameter query result (fluent API)
+   * @details 通过 ParameterServer::get() 或 ParamLoader::get() 返回。
+   *          支持链式调用设置约束：description、range、options 等。
+   *          可隐式转换为 T 类型直接使用。
+   *
+   *          Returned by ParameterServer::get() or ParamLoader::get().
+   *          Supports chained constraint settings: description, range, options, etc.
+   *          Implicitly convertible to type T for direct use.
+   *
+   * @tparam T 参数类型 / Parameter type
+   *
+   * @par 示例 / Example
+   * @code
+   * fins::ParamLoader loader("MyNode");
+   * double threshold = loader.get("threshold", 0.7)
+   *     .with_description("检测阈值，范围 0-1 / Detection threshold, range 0-1")
+   *     .within(0.0, 1.0);
+   * @endcode
+   */
   template<typename T>
   class ParamResult {
   public:
@@ -87,16 +107,46 @@ namespace fins {
 
     operator T() const { return value_; }
 
+    /**
+     * @brief 设置参数描述 / Set parameter description
+     * @param desc 描述文本 / Description text
+     * @return 自身引用用于链式调用 / Self reference for chaining
+     */
     ParamResult &with_description(const std::string &desc);
 
+    /**
+     * @brief 设置参数范围约束 / Set parameter range constraint
+     * @param min_val 最小值 / Minimum value
+     * @param max_val 最大值 / Maximum value
+     * @return 自身引用用于链式调用 / Self reference for chaining
+     */
     ParamResult &within(const T &min_val, const T &max_val);
 
+    /**
+     * @brief 设置参数上限 / Set parameter upper bound
+     * @param max_val 最大值 / Maximum value
+     * @return 自身引用用于链式调用 / Self reference for chaining
+     */
     ParamResult &less_than(const T &max_val);
 
+    /**
+     * @brief 设置参数下限 / Set parameter lower bound
+     * @param min_val 最小值 / Minimum value
+     * @return 自身引用用于链式调用 / Self reference for chaining
+     */
     ParamResult &greater_than(const T &min_val);
 
+    /**
+     * @brief 设置参数可选值列表 / Set parameter allowed values
+     * @param options 可选值向量 / Vector of allowed values
+     * @return 自身引用用于链式调用 / Self reference for chaining
+     */
     ParamResult &one_of(const std::vector<T> &options);
 
+    /**
+     * @brief 标记参数须为整数 / Mark parameter must be integer
+     * @return 自身引用用于链式调用 / Self reference for chaining
+     */
     ParamResult &is_integer();
 
   private:
@@ -109,27 +159,60 @@ namespace fins {
   template<typename T, typename A>
   struct is_vector<std::vector<T, A>> : std::true_type {};
 
+  /**
+   * @brief 参数服务器（单例） / Parameter server (singleton)
+   * @details 全局参数管理器，支持从 YAML 文件或字符串加载参数。
+   *          通常通过 ParamLoader 间接使用，而非直接调用。
+   *
+   *          Global parameter manager supporting parameter loading from YAML files
+   *          or strings. Typically used indirectly via ParamLoader.
+   */
   class FINS_API ParameterServer {
   public:
+    /// @brief 获取单例 / Get singleton instance
     static ParameterServer &get_instance();
 
     ParameterServer(const ParameterServer &) = delete;
     ParameterServer &operator=(const ParameterServer &) = delete;
 
+    /**
+     * @brief 从 YAML 字符串加载参数 / Load parameters from YAML string
+     * @param str YAML 格式字符串 / YAML formatted string
+     * @return 加载成功返回 true / true on success
+     */
     bool load_string(const std::string &str);
 
+    /**
+     * @brief 从 YAML 文件加载参数 / Load parameters from YAML file
+     * @param path 文件路径 / File path
+     * @return 加载成功返回 true / true on success
+     */
     bool load_file(const std::string &path);
 
+    /**
+     * @brief 查询参数（无默认值） / Query parameter (no default)
+     * @tparam T 参数类型 / Parameter type
+     * @param key 参数键（支持点分路径，如 "camera.exposure"） / Parameter key (dot-separated path, e.g. "camera.exposure")
+     * @return ParamResult<T> 流式结果 / Fluent result
+     */
     template<typename T>
     ParamResult<T> get(const std::string &key) const {
       return ParamResult<T>(key, get_impl<T>(key, nullptr));
     }
 
+    /**
+     * @brief 查询参数（带默认值） / Query parameter (with default)
+     * @tparam T 参数类型 / Parameter type
+     * @param key 参数键 / Parameter key
+     * @param default_value 默认值 / Default value
+     * @return ParamResult<T> 流式结果 / Fluent result
+     */
     template<typename T>
     ParamResult<T> get(const std::string &key, const T &default_value) const {
       return ParamResult<T>(key, get_impl<T>(key, &default_value));
     }
 
+    /// @brief 查询字符串参数（const char* 重载） / Query string parameter (const char* overload)
     ParamResult<std::string> get(const std::string &key, const char *default_value) const {
       std::string def_val(default_value ? default_value : "");
       return ParamResult<std::string>(key, get_impl<std::string>(key, &def_val));
@@ -523,38 +606,87 @@ namespace fins {
 
   inline ParameterServer &param_server() { return ParameterServer::get_instance(); }
 
+  /**
+   * @brief 参数加载器 / Parameter loader
+   * @details 带命名空间前缀的参数访问器，避免键名冲突。
+   *          构造函数传入的 prefix 会自动追加到所有查询键的前面。
+   *
+   *          Namespace-prefixed parameter accessor to avoid key name collisions.
+   *          The prefix passed to the constructor is automatically prepended to
+   *          all query keys.
+   *
+   * @par 示例 / Example
+   * @code
+   * fins::ParamLoader loader("MyNodeCategory");
+   * double conf = loader.get("confidence", 0.5)
+   *     .with_description("置信度阈值 / Confidence threshold")
+   *     .within(0.0, 1.0);
+   * @endcode
+   */
   class ParamLoader {
   public:
+    /**
+     * @brief 构造参数加载器 / Construct parameter loader
+     * @param prefix 命名空间前缀（自动追加 "."） / Namespace prefix (auto-appends ".")
+     */
     ParamLoader(const std::string &prefix = "") : prefix_(prefix) {
       if (!prefix_.empty() && prefix_.back() != '.') {
         prefix_ += ".";
       }
     }
 
+    /**
+     * @brief 查询参数（无默认值，带前缀） / Query parameter (no default, prefixed)
+     * @tparam T 参数类型 / Parameter type
+     * @param key 参数键（相对前缀） / Parameter key (relative to prefix)
+     * @return ParamResult<T>
+     */
     template<typename T>
     ParamResult<T> get(const std::string &key) const {
       return param_server().get<T>(prefix_ + key);
     }
 
+    /**
+     * @brief 查询参数（带默认值，带前缀） / Query parameter (with default, prefixed)
+     * @tparam T 参数类型 / Parameter type
+     * @param key 参数键 / Parameter key
+     * @param default_val 默认值 / Default value
+     * @return ParamResult<T>
+     */
     template<typename T>
     ParamResult<T> get(const std::string &key, const T &default_val) const {
       return param_server().get<T>(prefix_ + key, default_val);
     }
 
+    /// @brief 查询字符串参数（const char* 重载，带前缀） / Query string parameter (const char* overload, prefixed)
     ParamResult<std::string> get(const std::string &key, const char *default_val) const {
       return param_server().get(prefix_ + key, default_val);
     }
 
+    /**
+     * @brief 加载参数（无默认值，get 的别名） / Load parameter (no default, alias for get)
+     * @tparam T 参数类型 / Parameter type
+     * @param key 参数键 / Parameter key
+     * @return ParamResult<T>
+     */
     template<typename T>
     ParamResult<T> load(const std::string &key) const {
       return param_server().get<T>(prefix_ + key);
     }
 
+    /**
+     * @brief 加载参数（带默认值，get 的别名） / Load parameter (with default, alias for get)
+     * @tparam T 参数类型 / Parameter type
+     * @param key 参数键 / Parameter key
+     * @param default_val 默认值 / Default value
+     * @return ParamResult<T>
+     */
     template<typename T>
     ParamResult<T> load(const std::string &key, const T &default_val) const {
       return param_server().get<T>(prefix_ + key, default_val);
     }
 
+    /// @brief 加载字符串参数（const char* 重载） / Load string parameter (const char* overload)
     ParamResult<std::string> load(const std::string &key, const char *default_val) const {
       return param_server().get(prefix_ + key, default_val);
     }
