@@ -11,6 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -64,6 +65,18 @@ namespace fins {
     std::string file;
     uint32_t line;
   };
+
+  /// @brief 日志接收器回调类型 / Log sink callback type
+  using LogSink = std::function<void(const LogEntry &)>;
+
+  /// @brief 获取全局日志接收器列表 / Get global log sink list
+  inline std::vector<LogSink> &get_log_sinks() {
+    static std::vector<LogSink> sinks;
+    return sinks;
+  }
+
+  /// @brief 注册日志接收器 / Register a log sink
+  inline void register_log_sink(LogSink cb) { get_log_sinks().push_back(std::move(cb)); }
 
   inline std::atomic<NodeLogLevel> &get_log_level_ref() {
     static std::atomic<NodeLogLevel> level{NodeLogLevel::INFO};
@@ -140,10 +153,17 @@ namespace fins {
               .count() /
           1000.0;
 
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (logs_.size() >= 200)
-        logs_.pop_front();
-      logs_.push_back({now, level, msg, loc.file_name(), loc.line()});
+      LogEntry entry{now, level, msg, loc.file_name(), loc.line()};
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (logs_.size() >= 200)
+          logs_.pop_front();
+        logs_.push_back(entry);
+      }
+
+      for (auto &sink : get_log_sinks()) {
+        sink(entry);
+      }
     }
 #else
     void log_impl(const std::string &level, const std::string &msg, const char *file = "", uint32_t line = 0) {
@@ -153,10 +173,17 @@ namespace fins {
               .count() /
           1000.0;
 
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (logs_.size() >= 200)
-        logs_.pop_front();
-      logs_.push_back({now, level, msg, file, line});
+      LogEntry entry{now, level, msg, file, line};
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (logs_.size() >= 200)
+          logs_.pop_front();
+        logs_.push_back(entry);
+      }
+
+      for (auto &sink : get_log_sinks()) {
+        sink(entry);
+      }
     }
 #endif
 

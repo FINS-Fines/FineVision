@@ -9,6 +9,7 @@
 #define FINS_LOG_LEVEL 1
 
 #include <fins/server/server.hpp>
+#include <fins/server/ros2_manager.hpp>
 #include <fins/utils/performance_recorder.hpp>
 #include <csignal>
 
@@ -24,6 +25,11 @@ int main() {
   std::signal(SIGTERM, signal_handler);
 
   set_node_log_level(fins::NodeLogLevel::DEBUG);
+
+  // Initialize ROS2 support (no-op if ROS2 not available)
+  char *dummy_argv[] = {const_cast<char *>("agent"), nullptr};
+  int dummy_argc = 1;
+  fins::Ros2Manager::get_instance().initialize(dummy_argc, dummy_argv, "agent");
 
   FINS_THREAD_MANAGER.start();
 
@@ -47,6 +53,7 @@ int main() {
   FINS_PERF_MONITOR.stop();
   FINS_STUDIO.clear();
   FINS_THREAD_MANAGER.shutdown();
+  fins::Ros2Manager::get_instance().shutdown();
 
   return 0;
 }

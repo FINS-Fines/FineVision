@@ -47,6 +47,13 @@ if (FINS_PLATFORM STREQUAL "ARM")
     target_compile_definitions(fins_sdk PUBLIC FINS_HAS_ZENOH)
 endif()
 
+# Optional ROS2 support for rosout logging and parameter bridging
+find_package(rclcpp QUIET)
+if(rclcpp_FOUND)
+    message(STATUS "[FINS] ROS2 (rclcpp) found. Enabling rosout + param bridge support.")
+    target_link_libraries(fins_sdk PUBLIC rclcpp::rclcpp)
+endif()
+
 if(ament_cmake_FOUND)
     install(TARGETS fins_sdk EXPORT fins_sdk
         ARCHIVE DESTINATION lib

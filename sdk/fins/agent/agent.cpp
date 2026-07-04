@@ -7,6 +7,7 @@
 // main.cpp
 
 #include <fins/server/server.hpp>
+#include <fins/server/ros2_manager.hpp>
 #include <fins/node_log.hpp>
 #include <fins/thread_manager.hpp>
 #include <fins/utils/performance_recorder.hpp>
@@ -127,6 +128,9 @@ int main(int argc, char **argv) {
   fins::set_node_log_level(static_cast<fins::NodeLogLevel>(log_level));
   fins::Logger::get().set_node_terminal_enabled(terminal_log);
 
+  // Initialize ROS2 support (no-op if ROS2 not available)
+  fins::Ros2Manager::get_instance().initialize(argc, argv, agent_name);
+
   FINS_THREAD_MANAGER.start();
 
   if (enable_perf) {
@@ -160,6 +164,7 @@ int main(int argc, char **argv) {
   FINS_PERF_MONITOR.stop();
   FINS_STUDIO.clear();
   FINS_THREAD_MANAGER.shutdown();
+  fins::Ros2Manager::get_instance().shutdown();
 
   return 0;
 }

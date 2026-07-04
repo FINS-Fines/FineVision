@@ -190,6 +190,45 @@ namespace fins {
     bool load_file(const std::string &path);
 
     /**
+     * @brief 设置单个参数值 / Set a single parameter value
+     * @param key 参数键 / Parameter key
+     * @param value 参数值（字符串形式） / Parameter value (string form)
+     */
+    void set_value(const std::string &key, const std::string &value) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (params_.find(key) == params_.end()) {
+          params_order_.push_back(key);
+        }
+        params_[key] = value;
+      }
+      notify_changed();
+    }
+
+    /// @brief 参数变更回调类型 / Parameter change callback type
+    using ParamChangeCallback = std::function<void()>;
+
+    /// @brief 注册参数变更回调 / Register parameter change callback
+    void set_on_params_changed(ParamChangeCallback cb) {
+      std::lock_guard<std::mutex> lock(callback_mutex_);
+      change_callback_ = std::move(cb);
+    }
+
+    /// @brief 获取所有参数键 / Get all parameter keys
+    std::vector<std::string> get_all_keys() const {
+      std::lock_guard<std::mutex> lock(mutex_);
+      return params_order_;
+    }
+
+    /// @brief 获取参数值（字符串形式） / Get parameter value (string form)
+    std::string get_raw_value(const std::string &key) const {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = params_.find(key);
+      if (it != params_.end()) return it->second;
+      return "";
+    }
+
+    /**
      * @brief 查询参数（无默认值） / Query parameter (no default)
      * @tparam T 参数类型 / Parameter type
      * @param key 参数键（支持点分路径，如 "camera.exposure"） / Parameter key (dot-separated path, e.g. "camera.exposure")
@@ -377,6 +416,16 @@ namespace fins {
     std::map<std::string, std::string> params_;
     std::vector<std::string> params_order_;
     mutable std::mutex mutex_;
+
+    ParamChangeCallback change_callback_;
+    mutable std::mutex callback_mutex_;
+
+    void notify_changed() {
+      std::lock_guard<std::mutex> lock(callback_mutex_);
+      if (change_callback_) {
+        change_callback_();
+      }
+    }
 
     static std::string trim(const std::string &str);
 
