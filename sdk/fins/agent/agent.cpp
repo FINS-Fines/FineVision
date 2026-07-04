@@ -34,10 +34,9 @@ void print_usage(const char *prog_name) {
             << "  --threads-low <n>       Set low priority thread pool size (default: 4)\n"
             << "  --log-level <level>     Set node log level (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=OFF) (default: 1)\n"
             << "  --perf                  Enable performance monitor (default: off)\n"
-            << "  --plugin <file>         Load specified .so plugin file (can be repeated)\n"
-            << "  --load-all              Load all plugins from ~/.fins/install/ (ignores --plugin)\n"
+            << "  --workspace <path>      Add workspace install path for plugin loading (can be repeated)\n"
             << "  --webui <url>           Connect to WebUI URL (e.g. http://localhost:8080)\n"
-            << "  --name <agent_name>     Set agent name (default: agent-any)\n"
+            << "  --name <agent_name>     Set agent name (default: agent)\n"
             << "  --ip <agent_ip>         Set agent IP binding (default: 0.0.0.0)\n"
             << "  --port <agent_port>     Set agent listening port (default: 9090)\n"
             << "  --terminal-log <on/off> Enable/disable terminal log printing (default: on)\n"
@@ -55,8 +54,7 @@ int main(int argc, char **argv) {
   int log_level = 1; // INFO
   bool terminal_log = true;
   bool enable_perf = false;
-  bool load_all = false;
-  std::vector<std::string> plugins;
+  std::vector<std::string> workspaces;
   std::string webui_url = "http://localhost:8080";
   std::string agent_name = "agent";
   std::string agent_ip = "0.0.0.0";
@@ -64,8 +62,7 @@ int main(int argc, char **argv) {
 
   struct option long_options[] = {{"log-level", required_argument, 0, 'L'},
                                   {"perf", no_argument, 0, 'f'},
-                                  {"plugin", required_argument, 0, 'p'},
-                                  {"load-all", no_argument, 0, 'A'},
+                                  {"workspace", required_argument, 0, 'W'},
                                   {"webui", required_argument, 0, 'w'},
                                   {"name", required_argument, 0, 'n'},
                                   {"ip", required_argument, 0, 'I'},
@@ -76,13 +73,16 @@ int main(int argc, char **argv) {
 
   int opt;
   int option_index = 0;
-  while ((opt = getopt_long(argc, argv, "u:H:m:l:L:f:p:Aw:n:I:P:T:h", long_options, &option_index)) != -1) {
+  while ((opt = getopt_long(argc, argv, "u:H:m:l:L:f:W:w:n:I:P:T:h", long_options, &option_index)) != -1) {
     switch (opt) {
       case 'L':
         log_level = std::stoi(optarg);
         break;
       case 'f':
         enable_perf = true;
+        break;
+      case 'W':
+        workspaces.push_back(optarg);
         break;
       case 'T': {
         std::string val = optarg;
@@ -93,12 +93,6 @@ int main(int argc, char **argv) {
         }
         break;
       }
-      case 'p':
-        plugins.push_back(optarg);
-        break;
-      case 'A':
-        load_all = true;
-        break;
       case 'w':
         webui_url = optarg;
         break;
@@ -143,16 +137,14 @@ int main(int argc, char **argv) {
 
   server.connect(webui_url);
 
-  // Load plugins
-  if (load_all) {
-    FINS_LOG_INFO("[Agent] Loading all plugins from ~/.fins/install/");
-    lib.load_directory("~/.fins/install/");
-  } else {
-    for (const auto &p: plugins) {
-      lib.load_plugin(p);
-    }
+  // Load plugins: always load from global install directory, then from each workspace
+  lib.load_directory("~/.fins/install/");
+  for (const auto &ws : workspaces) {
+    std::string install_path = ws + "/install/";
+    FINS_LOG_INFO("[Agent] Loading plugins from workspace: {}", install_path);
+    lib.load_directory(install_path);
   }
-  
+
   server.start(agent_name, agent_ip, agent_port);
 
   while (g_running) {

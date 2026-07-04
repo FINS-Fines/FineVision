@@ -23,13 +23,13 @@ if(NOT COMMAND fins_add_node)
         add_compile_definitions(PKG_NAME="${FINS_META_NAME}")
         add_compile_definitions(PKG_SOURCE="${FINS_META_SOURCE}")
 
-        set_target_properties(${_target} PROPERTIES 
-            OUTPUT_NAME "${FINS_META_SOURCE}_${_target}"
+        set_target_properties(${_target} PROPERTIES
+            OUTPUT_NAME "${_target}"
             POSITION_INDEPENDENT_CODE ON
         )
-        
+
         install(TARGETS ${_target}
-            DESTINATION "$ENV{HOME}/.fins/install"
+            DESTINATION "$ENV{HOME}/.fins/install/${_target}"
         )
     endmacro()
 endif()
@@ -111,7 +111,7 @@ print(workspace_name)
     endif()
 
     set_target_properties(${target_name} PROPERTIES
-        OUTPUT_NAME "${pkg_source}_${target_name}"
+        OUTPUT_NAME "${target_name}"
         POSITION_INDEPENDENT_CODE ON
     )
 

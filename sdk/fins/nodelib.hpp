@@ -105,10 +105,27 @@ namespace fins {
       }
 
       std::vector<fs::path> plugins;
+
+      // Scan flat .so files (legacy layout)
       for (const auto &entry: fs::directory_iterator(expanded_path)) {
-        if (entry.path().extension() == ".so" &&
+        if (entry.is_regular_file() &&
+            entry.path().extension() == ".so" &&
             entry.path().filename().string().find("fins_shared") == std::string::npos) {
           plugins.push_back(entry.path());
+        }
+      }
+
+      // Scan one level of subdirectories for lib/ subdirs (layout: install/<pkg>/lib/lib<pkg>.so)
+      for (const auto &subdir: fs::directory_iterator(expanded_path)) {
+        if (!subdir.is_directory()) continue;
+        fs::path lib_dir = subdir.path() / "lib";
+        if (!fs::is_directory(lib_dir)) continue;
+        for (const auto &entry: fs::directory_iterator(lib_dir)) {
+          if (entry.is_regular_file() &&
+              entry.path().extension() == ".so" &&
+              entry.path().filename().string().find("fins_shared") == std::string::npos) {
+            plugins.push_back(entry.path());
+          }
         }
       }
 
