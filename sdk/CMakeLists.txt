@@ -57,11 +57,12 @@ if(ament_cmake_FOUND)
         DESTINATION include/fins
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
     )
-    ament_register_extension("ament_cmake" "fins" "cmake/fins-extras.cmake")
-    
+    install(FILES cmake/finevision-extras.cmake
+        DESTINATION share/${PROJECT_NAME}/cmake
+    )
     ament_export_targets(fins_sdk)
     ament_export_dependencies(Threads)
-    ament_package()
+    ament_package(CONFIG_EXTRAS cmake/finevision-extras.cmake)
 else()
     install(TARGETS fins_sdk 
         ARCHIVE DESTINATION lib

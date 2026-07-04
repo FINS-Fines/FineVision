@@ -72,3 +72,26 @@ macro(fins_optional_ros_dependency target pkg_name)
         message(STATUS ">> Optional Package '${pkg_name}': NOT FOUND. Skipping.")
     endif()
 endmacro()
+
+function(fins_add_node_metadata target_name)
+    set(pkg_source "colcon_ws")
+    if(${ARGC} GREATER 1)
+        set(pkg_source ${ARGV1})
+    endif()
+
+    set_target_properties(${target_name} PROPERTIES
+        OUTPUT_NAME "${pkg_source}_${target_name}"
+        POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_compile_definitions(${target_name} PRIVATE
+        PKG_NAME="${target_name}"
+        PKG_SOURCE="${pkg_source}"
+        FMT_HEADER_ONLY
+        FINS_NODE
+    )
+
+    message(STATUS "[FINS] Metadata configured for target '${target_name}':")
+    message(STATUS "  -> Output Name : ${pkg_source}_${target_name}")
+    message(STATUS "  -> Source Type : ${pkg_source}")
+endfunction()
