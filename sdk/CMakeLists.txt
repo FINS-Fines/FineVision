@@ -48,10 +48,15 @@ if (FINS_PLATFORM STREQUAL "ARM")
 endif()
 
 # Optional ROS2 support for rosout logging and parameter bridging
+# Only add include directories here — actual linking is done at the executable level
+# to avoid pulling in rclcpp's full transitive dependency tree (fastcdr, etc.)
 find_package(rclcpp QUIET)
 if(rclcpp_FOUND)
     message(STATUS "[FINS] ROS2 (rclcpp) found. Enabling rosout + param bridge support.")
-    target_link_libraries(fins_sdk PUBLIC rclcpp::rclcpp)
+    get_target_property(_rclcpp_includes rclcpp::rclcpp INTERFACE_INCLUDE_DIRECTORIES)
+    if(_rclcpp_includes)
+        target_include_directories(fins_sdk PUBLIC ${_rclcpp_includes})
+    endif()
 endif()
 
 if(ament_cmake_FOUND)
