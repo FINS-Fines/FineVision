@@ -26,17 +26,18 @@ int main() {
 
   set_node_log_level(fins::NodeLogLevel::DEBUG);
 
-  // Initialize ROS2 support (no-op if ROS2 not available)
-  char *dummy_argv[] = {const_cast<char *>("agent"), nullptr};
-  int dummy_argc = 1;
-  fins::Ros2Manager::get_instance().initialize(dummy_argc, dummy_argv, "agent");
-
   FINS_THREAD_MANAGER.start();
 
   FINS_PERF_MONITOR.start();
 
   fins::NodeLib lib;
+  // Load plugins first — they may initialize rclcpp internally
   lib.load_directory("~/.fins/install/");
+
+  // Initialize ROS2 support after plugins (no-op if ROS2 not available)
+  char *dummy_argv[] = {const_cast<char *>("agent"), nullptr};
+  int dummy_argc = 1;
+  fins::Ros2Manager::get_instance().initialize(dummy_argc, dummy_argv, "agent");
   // lib.print_capabilities();
 
   fins::AgentServer server(lib);

@@ -122,9 +122,6 @@ int main(int argc, char **argv) {
   fins::set_node_log_level(static_cast<fins::NodeLogLevel>(log_level));
   fins::Logger::get().set_node_terminal_enabled(terminal_log);
 
-  // Initialize ROS2 support (no-op if ROS2 not available)
-  fins::Ros2Manager::get_instance().initialize(argc, argv, agent_name);
-
   FINS_THREAD_MANAGER.start();
 
   if (enable_perf) {
@@ -137,13 +134,18 @@ int main(int argc, char **argv) {
 
   server.connect(webui_url);
 
-  // Load plugins: always load from global install directory, then from each workspace
+  // Load plugins first — plugins (e.g. rosbridge) may initialize rclcpp themselves.
+  // Ros2Manager initializes lazily after plugins, reusing any existing rclcpp context.
   lib.load_directory("~/.fins/install/");
   for (const auto &ws : workspaces) {
     std::string install_path = ws + "/install/";
     FINS_LOG_INFO("[Agent] Loading plugins from workspace: {}", install_path);
     lib.load_directory(install_path);
   }
+
+  // Initialize ROS2 support after plugins (no-op if ROS2 not available).
+  // If a plugin already called rclcpp::init(), this reuses that context.
+  fins::Ros2Manager::get_instance().initialize(argc, argv, agent_name);
 
   server.start(agent_name, agent_ip, agent_port);
 
