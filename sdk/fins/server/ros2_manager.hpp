@@ -63,8 +63,8 @@ public:
     node_ = std::make_shared<rclcpp::Node>(node_name);
 
     // Setup rosout publisher
-    // Match standard ROS2 /rosout QoS (rcl_logging_rosout: KeepLast(100), reliable, volatile)
-    auto rosout_qos = rclcpp::QoS(rclcpp::KeepLast(100));
+    // Match standard ROS2 /rosout QoS (rmw_qos_profile_rosout: KeepLast(100), reliable, transient_local)
+    auto rosout_qos = rclcpp::QoS(rclcpp::KeepLast(100)).reliable().transient_local();
     rosout_pub_ = node_->create_publisher<rcl_interfaces::msg::Log>("/rosout", rosout_qos);
 
     // Register log sink (called from any NodeLogger thread — publishing is thread-safe)
