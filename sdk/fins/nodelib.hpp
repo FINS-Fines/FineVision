@@ -241,6 +241,14 @@ namespace fins {
           }
         }
         contexts_.push_back(ctx);
+
+        for (int i = 0; i < count; ++i) {
+          std::string key = ctx->get_name(i);
+          if (!key.empty()) {
+            NodeFactory::get_instance().register_foreign(key,
+                [ctx, key]() -> INode* { return ctx->create_node(key.c_str()); });
+          }
+        }
       } else {
         if (ctx->plugin_destroy) {
           ctx->plugin_destroy();
@@ -256,6 +264,7 @@ namespace fins {
 #endif
 
     std::string get_dataflow_json() const { return last_dataflow_json_; }
+    void set_dataflow_json(const std::string& json_str) { last_dataflow_json_ = json_str; }
 
     void print_capabilities() const {
       json caps = get_capabilities();

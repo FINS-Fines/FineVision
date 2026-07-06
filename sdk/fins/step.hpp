@@ -412,7 +412,7 @@ namespace fins {
             active_us_sum += std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
             
             auto t_comp = fins::now();
-            FINS_PERF_MONITOR.push_record({
+            FINS_TIMELINE_MONITOR.push_record({
               id_, 
               entry.port, 
               get_port_description(entry.port),
@@ -432,7 +432,7 @@ namespace fins {
                   auto c_end = get_thread_cpu_time_ns();
                   
                   auto t_comp = fins::now();
-                  FINS_PERF_MONITOR.push_record({
+                  FINS_TIMELINE_MONITOR.push_record({
                     self->id_, p, 
                     self->get_port_description(p),
                     to_nanoseconds(msg.acq_time),

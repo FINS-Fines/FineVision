@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
   FINS_THREAD_MANAGER.start();
 
   if (enable_perf) {
-    FINS_PERF_MONITOR.start();
+    FINS_TIMELINE_MONITOR.start();
   }
 
   fins::NodeLib lib;
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
 
   FINS_LOG_INFO("[Agent] Shutting down agent...");
   server.stop();
-  FINS_PERF_MONITOR.stop();
+  FINS_TIMELINE_MONITOR.stop();
   FINS_STUDIO.clear();
   FINS_THREAD_MANAGER.shutdown();
   fins::Ros2Manager::get_instance().shutdown();

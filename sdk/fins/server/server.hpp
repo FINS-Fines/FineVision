@@ -244,7 +244,7 @@ namespace fins {
         if (res->status == 200) {
           return true;
         } else {
-          FINS_LOG_ERROR("[AgentServer] Registration failed: {}", res->status);
+          FINS_LOG_WARN("[AgentServer] Registration failed: {} (orchestrator not running?)", res->status);
           return false;
         }
       } else {

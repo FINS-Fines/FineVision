@@ -37,8 +37,19 @@ foreach(src ${raw_sources})
     endif()
 endforeach()
 
-add_library(fins_sdk STATIC ${SDK_SOURCES})
-set_target_properties(fins_sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# When building under colcon/ament, use SHARED so singletons (NodeFactory,
+# PipeFactory, log sinks) are shared across .so plugin boundaries.
+# Otherwise fall back to STATIC for standalone CMake builds.
+if(ament_cmake_FOUND)
+    add_library(fins_sdk SHARED ${SDK_SOURCES})
+    set_target_properties(fins_sdk PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        CXX_VISIBILITY_PRESET default
+    )
+else()
+    add_library(fins_sdk STATIC ${SDK_SOURCES})
+    set_target_properties(fins_sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 target_compile_definitions(fins_sdk PUBLIC FMT_HEADER_ONLY)
 target_include_directories(fins_sdk PUBLIC
@@ -63,15 +74,12 @@ if (FINS_PLATFORM STREQUAL "ARM")
     target_compile_definitions(fins_sdk PUBLIC FINS_HAS_ZENOH)
 endif()
 
-# Optional ROS2 support for rosout logging and parameter bridging
-# Only add include directories here — actual linking is done at the executable level
-# to avoid pulling in rclcpp's full transitive dependency tree (fastcdr, etc.)
 find_package(rclcpp QUIET)
 if(rclcpp_FOUND)
     message(STATUS "[FINS] ROS2 (rclcpp) found. Enabling rosout + param bridge support.")
     get_target_property(_rclcpp_includes rclcpp::rclcpp INTERFACE_INCLUDE_DIRECTORIES)
     if(_rclcpp_includes)
-        target_include_directories(fins_sdk PUBLIC ${_rclcpp_includes})
+        target_include_directories(fins_sdk PRIVATE ${_rclcpp_includes})
     endif()
 endif()
 

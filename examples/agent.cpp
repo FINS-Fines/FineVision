@@ -28,7 +28,7 @@ int main() {
 
   FINS_THREAD_MANAGER.start();
 
-  FINS_PERF_MONITOR.start();
+  FINS_TIMELINE_MONITOR.start();
 
   fins::NodeLib lib;
   // Load plugins first — they may initialize rclcpp internally
@@ -51,7 +51,7 @@ int main() {
 
   FINS_LOG_INFO("[Agent] Shutting down agent...");
   server.stop();
-  FINS_PERF_MONITOR.stop();
+  FINS_TIMELINE_MONITOR.stop();
   FINS_STUDIO.clear();
   FINS_THREAD_MANAGER.shutdown();
   fins::Ros2Manager::get_instance().shutdown();

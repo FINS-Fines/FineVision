@@ -97,7 +97,7 @@ private:
     ~PerformanceMonitor() { stop(); }
 
     void worker_loop() {
-        pthread_setname_np(pthread_self(), "fins_perf_monitor");
+        pthread_setname_np(pthread_self(), "fins_timeline_monitor");
         std::ofstream ofs(filename_, std::ios::app);
         while (running_ || !queue_.empty()) {
             std::deque<MsgPerfRecord> batch;
@@ -213,5 +213,5 @@ private:
     bool active_;
 };
 
-#define FINS_PERF_MONITOR fins::PerformanceMonitor::get_instance()
+#define FINS_TIMELINE_MONITOR fins::PerformanceMonitor::get_instance()
 }

@@ -27,6 +27,7 @@
 #include <cassert>
 #include <functional>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -1166,6 +1167,27 @@ namespace fins {
       }
     }
 
+    void register_foreign(const std::string& key, CreatorFunc creator) {
+        if (creators_.find(key) != creators_.end()) return;
+
+        auto slash = key.rfind('/');
+        auto at = key.rfind('@');
+        std::string name = key.substr(
+            (slash != std::string::npos) ? slash + 1 : 0,
+            (at != std::string::npos) ? at - ((slash != std::string::npos) ? slash + 1 : 0) : std::string::npos);
+
+        NodeMeta meta;
+        meta.name = name;
+        meta.source = (slash != std::string::npos) ? key.substr(0, slash) : "";
+        meta.version = (at != std::string::npos) ? key.substr(at + 1) : "default";
+
+        foreign_keys_.insert(key);
+        creators_[key] = creator;
+        metas_[key] = meta;
+        names_.push_back(key);
+        FINS_LOG_DEBUG("[NodeFactory] Registered foreign node: {}", key);
+    }
+
     void print_registered_nodes() {
       FINS_LOG_INFO("[NodeFactory] Registered Nodes:");
       for (const auto &name: names_) {
@@ -1176,7 +1198,9 @@ namespace fins {
     INode *create(const std::string &name) {
       if (creators_.find(name) != creators_.end()) {
         INode *node = creators_[name]();
-        node->define();
+        if (!foreign_keys_.count(name)) {
+            node->define();
+        }
         return node;
       }
       return nullptr;
@@ -1209,6 +1233,7 @@ namespace fins {
     std::map<std::string, CreatorFunc> creators_;
     std::map<std::string, NodeMeta> metas_;
     std::vector<std::string> names_;
+    std::set<std::string> foreign_keys_;
     NodeFactory() = default;
   };
 
