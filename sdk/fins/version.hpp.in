@@ -1,0 +1,18 @@
+#pragma once
+
+#define FINS_VERSION_MAJOR @finevision_VERSION_MAJOR@
+#define FINS_VERSION_MINOR @finevision_VERSION_MINOR@
+#define FINS_VERSION_PATCH @finevision_VERSION_PATCH@
+
+#define FINS_VERSION_STRING "@finevision_VERSION@"
+
+namespace fins {
+
+  struct Version {
+    static constexpr int major = FINS_VERSION_MAJOR;
+    static constexpr int minor = FINS_VERSION_MINOR;
+    static constexpr int patch = FINS_VERSION_PATCH;
+    static constexpr const char *string = FINS_VERSION_STRING;
+  };
+
+} // namespace fins

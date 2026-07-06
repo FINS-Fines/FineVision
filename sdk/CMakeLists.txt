@@ -1,7 +1,15 @@
 # sdk/CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.16)
-project(finevision VERSION 1.0 LANGUAGES CXX)
+
+# ── Read version from package.xml (single source of truth) ──────────
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" _pkg_xml)
+if(_pkg_xml MATCHES "<version>([0-9]+\\.[0-9]+\\.[0-9]+)</version>")
+    set(_parsed_version "${CMAKE_MATCH_1}")
+else()
+    set(_parsed_version "0.1.0")
+endif()
+project(finevision VERSION ${_parsed_version} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,6 +17,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
+# ── Generate version.hpp from CMake variables ───────────────────────
+# version.hpp.in uses @PROJECT_VERSION_MAJOR@ etc.
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/fins/version.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/fins/version.hpp"
+    @ONLY
+)
 find_package(ament_cmake QUIET)
 
 file(GLOB_RECURSE raw_sources CONFIGURE_DEPENDS "*.cpp")
@@ -27,6 +42,7 @@ set_target_properties(fins_sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_definitions(fins_sdk PUBLIC FMT_HEADER_ONLY)
 target_include_directories(fins_sdk PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/fins/third_party/fmt/include>
     $<INSTALL_INTERFACE:include>
@@ -65,9 +81,12 @@ if(ament_cmake_FOUND)
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin
     )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/fins/" 
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/fins/"
         DESTINATION include/fins
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/include/fins/version.hpp"
+        DESTINATION include/fins
     )
     install(FILES cmake/finevision-extras.cmake
         DESTINATION share/${PROJECT_NAME}/cmake
@@ -76,12 +95,15 @@ if(ament_cmake_FOUND)
     ament_export_dependencies(Threads)
     ament_package(CONFIG_EXTRAS cmake/finevision-extras.cmake)
 else()
-    install(TARGETS fins_sdk 
+    install(TARGETS fins_sdk
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
     )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/fins/" 
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/fins/"
         DESTINATION include/fins
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/include/fins/version.hpp"
+        DESTINATION include/fins
     )
 endif()
