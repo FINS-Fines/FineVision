@@ -1,0 +1,147 @@
+name: Build ROS2 DEB Package
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # ────────────────────────────────────────────────────
+  # Build .deb — matrix across ROS 2 distros
+  # ────────────────────────────────────────────────────
+  build-deb:
+    name: Build .deb (${{ matrix.ros_distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [foxy, humble, jazzy]
+    container:
+      image: ros:${{ matrix.ros_distro }}-ros-base
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            python3-colcon-common-extensions \
+            dpkg-dev
+          rosdep init 2>/dev/null || true
+          rosdep update 2>/dev/null || true
+
+      - name: Build .deb
+        run: |
+          bash ./scripts/build_deb.sh -d ${{ matrix.ros_distro }} -t "${BUILD_TYPE}"
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: ros-${{ matrix.ros_distro }}-finevision-deb
+          path: artifacts/*.deb
+          retention-days: 30
+
+      - name: Upload build logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.ros_distro }}
+          path: /tmp/colcon_ws/log/
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────
+  # Install test — same matrix
+  # ────────────────────────────────────────────────────
+  test-install:
+    name: Test install (${{ matrix.ros_distro }})
+    runs-on: ubuntu-latest
+    needs: build-deb
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [foxy, humble, jazzy]
+    container:
+      image: ros:${{ matrix.ros_distro }}-ros-base
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Download .deb
+        uses: actions/download-artifact@v4
+        with:
+          name: ros-${{ matrix.ros_distro }}-finevision-deb
+          path: /tmp/debs
+
+      - name: Install .deb globally
+        run: |
+          set -euo pipefail
+          DEB=$(ls /tmp/debs/*.deb 2>/dev/null | head -1)
+          if [ -z "$DEB" ]; then echo "ERROR: no .deb"; exit 1; fi
+          dpkg -i "$DEB" 2>&1 || true
+
+      - name: Verify
+        run: |
+          DISTRO="${{ matrix.ros_distro }}"
+          echo "== Installed files =="
+          dpkg -L "ros-${DISTRO}-finevision" 2>/dev/null || true
+          echo ""
+          echo "== /opt/ros/${DISTRO}/ tree =="
+          find "/opt/ros/${DISTRO}/" -maxdepth 3 -type f 2>/dev/null | sort | head -40 || echo "(empty)"
+          if [ -f "/opt/ros/${DISTRO}/include/fins/node.hpp" ]; then
+            echo ""
+            echo "OK: FineVision SDK installed globally at /opt/ros/${DISTRO}/"
+          else
+            echo "WARN: headers not at expected path"
+          fi
+
+  # ────────────────────────────────────────────────────
+  # GitHub Release (tag push, all distros)
+  # ────────────────────────────────────────────────────
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-deb, test-install]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all .debs
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.deb
+          name: FineVision SDK ${{ github.ref_name }}
+          body: |
+            ## FineVision SDK ${{ github.ref_name }}
+
+            Debian packages for ROS 2 (foxy, humble, jazzy).
+
+            ### Global Install
+            ```bash
+            # Choose your ROS distro:
+            sudo dpkg -i ros-<distro>-finevision_*.deb
+            source /opt/ros/<distro>/setup.bash
+            ```
+            Installs to `/opt/ros/<distro>/`.
+          draft: false
+          prerelease: false
