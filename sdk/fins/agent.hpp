@@ -92,13 +92,18 @@ public:
     // ── Plugin loading ───────────────────────────────────────────────
 
     Agent& load_plugins() {
+        // ~/.fins/install/
         std::string home = expand_user("~/.fins/install/");
         FINS_LOG_INFO("[Agent] Scanning: {}", home);
         if (fs::exists(home) && fs::is_directory(home))
             lib_.load_directory(home);
 
-        if (fs::exists("install") && fs::is_directory("install")) {
-            for (auto& pkg : fs::directory_iterator("install")) {
+        // Colcon workspace install/ — try relative to cwd first,
+        // then relative to the executable (for ros2 launch).
+        std::string install_dir = find_install_dir();
+        if (!install_dir.empty()) {
+            FINS_LOG_INFO("[Agent] Workspace install: {}", install_dir);
+            for (auto& pkg : fs::directory_iterator(install_dir)) {
                 auto lib_dir = pkg.path() / "lib";
                 if (fs::exists(lib_dir) && fs::is_directory(lib_dir)) {
                     FINS_LOG_INFO("[Agent] Scanning: {}", lib_dir.string());
@@ -273,6 +278,26 @@ private:
         for (size_t i = 0; i < factory.count(); ++i)
             FINS_LOG_ERROR("  - {}", factory.get_name(i));
         return nullptr;
+    }
+
+    // Walk up from cwd or executable path to find colcon install/
+    static std::string find_install_dir() {
+        // 1. cwd
+        if (fs::exists("install") && fs::is_directory("install"))
+            return "install";
+
+        // 2. Walk up from executable path (for ros2 launch)
+        std::string exe = expand_user("/proc/self/exe");
+        if (fs::exists(exe) && fs::is_symlink(exe)) {
+            auto dir = fs::read_symlink(exe).parent_path();
+            while (!dir.empty() && dir != dir.root_directory()) {
+                auto candidate = dir / "install";
+                if (fs::exists(candidate) && fs::is_directory(candidate))
+                    return candidate.string();
+                dir = dir.parent_path();
+            }
+        }
+        return "";
     }
 
     static std::string expand_user(const std::string& path) {
