@@ -18,7 +18,9 @@ namespace fins {
     }
 
     void define() override {
-      set_basics("ZenohPublisher", "Publishes a counter to Zenoh /hello_world", "Network");
+      set_name("ZenohPublisher");
+      set_description("Publishes a counter to Zenoh /hello_world");
+      set_category("Network");
       register_parameter<std::string>("key_expr", &ZenohPublisherNode::set_key, "/hello_world");
     }
 

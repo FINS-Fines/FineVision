@@ -309,7 +309,9 @@ namespace fins {
    * class MyNode : public fins::Node {
    * protected:
    *   void define() override {
-   *     set_basics("MyNode", "示例节点 / Example node", "MyCategory");
+   *     set_name("MyNode");
+   *     set_description("示例节点 / Example node");
+   *     set_category("MyCategory");
    *     register_input<Image>("image_in", &MyNode::on_image);
    *     register_output<DetectionResult>("detections");
    *     register_parameter<double>("threshold", &MyNode::on_threshold, 0.5);
@@ -520,144 +522,149 @@ namespace fins {
     void set_version(const std::string &ver) { meta_.version = ver; }
 
     /**
-     * @brief 批量设置节点基本信息 / Set node basic info in batch
-     * @param name 节点名称 / Node name
-     * @param desc 节点描述 / Node description
-     * @param cat 节点分类 / Node category
-     * @param ver 版本号，默认 "default" / Version, defaults to "default"
-     */
-    void set_basics(const std::string &name, const std::string &desc, const std::string &cat,
-                    const std::string &ver = "default") {
-      set_name(name);
-      set_description(desc);
-      set_category(cat);
-      set_version(ver);
-    }
-
-    /**
-     * @brief 注册固定端口输入（Msg 回调） / Register fixed-port input (Msg callback)
+     * @brief 注册固定端口输入 / Register fixed-port input
      * @tparam Port 端口号（编译期常量） / Port number (compile-time constant)
      * @tparam T 数据类型 / Data type
      * @tparam ClassType 节点类类型（自动推导） / Node class type (deduced)
      * @param name 端口名称 / Port name
-     * @param method 回调成员函数，接收 const Msg<T>& / Callback member function receiving const Msg<T>&
+     * @param method 回调成员函数 / Callback member function
      *
-     * @par 回调签名 / Callback signatures
+     * @par 回调签名 / Callback signatures (4 variants)
      * @code
-     * void on_data(const Msg<T>& msg);   // 获取完整消息（含时间戳） / Get full message (with timestamp)
-     * void on_data(const T&, AcqTime);   // 解包数据和时间戳 / Unpacked data and timestamp
-     * void on_data(const T&);            // 仅数据 / Data only
+     * void on_data(const std::shared_ptr<T> data, AcqTime ts);  // shared_ptr + timestamp
+     * void on_data(const T& data, AcqTime ts);                  // data + timestamp
+     * void on_data(const std::shared_ptr<T> data);              // shared_ptr only
+     * void on_data(const T& data);                              // data only
      * @endcode
      */
+
+    // ── fixed-port: shared_ptr + AcqTime ──
     template<int Port, typename T, typename ClassType>
-    void register_input(const std::string &name, void (ClassType::*method)(const Msg<T> &)) {
-
+    void register_input(const std::string &name, void (ClassType::*method)(const std::shared_ptr<T>, AcqTime)) {
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(Port))
         meta_.inputs.resize(Port + 1);
       meta_.inputs[Port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
-        (static_cast<ClassType *>(this)->*method)(typed_msg);
+        (static_cast<ClassType *>(this)->*method)(typed_msg.ptr(), typed_msg.acq_time);
       };
     }
 
+    // ── fixed-port: data + AcqTime ──
     template<int Port, typename T, typename ClassType>
     void register_input(const std::string &name, void (ClassType::*method)(const T &, AcqTime)) {
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(Port))
         meta_.inputs.resize(Port + 1);
       meta_.inputs[Port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data, typed_msg.acq_time);
       };
     }
 
+    // ── fixed-port: shared_ptr only ──
     template<int Port, typename T, typename ClassType>
-    void register_input(const std::string &name, void (ClassType::*method)(const T &)) {
+    void register_input(const std::string &name, void (ClassType::*method)(const std::shared_ptr<T>)) {
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(Port))
         meta_.inputs.resize(Port + 1);
       meta_.inputs[Port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
+        Msg<T> typed_msg(any_msg);
+        (static_cast<ClassType *>(this)->*method)(typed_msg.ptr());
+      };
+    }
+
+    // ── fixed-port: data only ──
+    template<int Port, typename T, typename ClassType>
+    void register_input(const std::string &name, void (ClassType::*method)(const T &)) {
+      std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
+      if (meta_.inputs.size() <= static_cast<size_t>(Port))
+        meta_.inputs.resize(Port + 1);
+      meta_.inputs[Port] = {name, type_str};
+      std::type_index expected_id = std::type_index(typeid(T));
+      input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data);
       };
     }
 
-    /**
-     * @brief 注册自动编号端口输入（Msg 回调） / Register auto-numbered port input (Msg callback)
-     * @tparam T 数据类型 / Data type
-     * @tparam ClassType 节点类类型（自动推导） / Node class type (deduced)
-     * @param name 端口名称 / Port name
-     * @param method 回调成员函数 / Callback member function
-     * @note 端口号自动递增分配，从 0 开始。 / Port number is auto-incremented starting from 0.
-     */
+    // ═══════════════════════════════════════════════════════════════
+    // Auto-numbered port variants (same 4 signatures)
+    // ═══════════════════════════════════════════════════════════════
+
+    // ── auto: shared_ptr + AcqTime ──
     template<typename T, typename ClassType>
-    void register_input(const std::string &name, void (ClassType::*method)(const Msg<T> &)) {
+    void register_input(const std::string &name, void (ClassType::*method)(const std::shared_ptr<T>, AcqTime)) {
       int port = next_input_port_++;
       input_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(port))
         meta_.inputs.resize(port + 1);
       meta_.inputs[port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
-        (static_cast<ClassType *>(this)->*method)(typed_msg);
+        (static_cast<ClassType *>(this)->*method)(typed_msg.ptr(), typed_msg.acq_time);
       };
     }
 
+    // ── auto: data + AcqTime ──
     template<typename T, typename ClassType>
     void register_input(const std::string &name, void (ClassType::*method)(const T &, AcqTime)) {
       int port = next_input_port_++;
       input_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(port))
         meta_.inputs.resize(port + 1);
       meta_.inputs[port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data, typed_msg.acq_time);
       };
     }
 
+    // ── auto: shared_ptr only ──
     template<typename T, typename ClassType>
-    void register_input(const std::string &name, void (ClassType::*method)(const T &)) {
+    void register_input(const std::string &name, void (ClassType::*method)(const std::shared_ptr<T>)) {
       int port = next_input_port_++;
       input_name_to_port_[name] = port;
-
       std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
-
       if (meta_.inputs.size() <= static_cast<size_t>(port))
         meta_.inputs.resize(port + 1);
       meta_.inputs[port] = {name, type_str};
       std::type_index expected_id = std::type_index(typeid(T));
       input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
-        if (any_msg.type_id != expected_id)
-          return;
+        if (any_msg.type_id != expected_id) return;
+        Msg<T> typed_msg(any_msg);
+        (static_cast<ClassType *>(this)->*method)(typed_msg.ptr());
+      };
+    }
+
+    // ── auto: data only ──
+    template<typename T, typename ClassType>
+    void register_input(const std::string &name, void (ClassType::*method)(const T &)) {
+      int port = next_input_port_++;
+      input_name_to_port_[name] = port;
+      std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
+      if (meta_.inputs.size() <= static_cast<size_t>(port))
+        meta_.inputs.resize(port + 1);
+      meta_.inputs[port] = {name, type_str};
+      std::type_index expected_id = std::type_index(typeid(T));
+      input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
+        if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data);
       };
@@ -1229,7 +1236,7 @@ namespace fins {
       Register_##UserClass() {                                                                                    \
         auto temp_ptr = std::make_unique<UserClass>();                                                            \
                                                                                                                   \
-        temp_ptr->define();                                                                                       \
+        static_cast<fins::INode *>(temp_ptr.get())->define();                                                       \
         fins::NodeMeta meta = temp_ptr->get_meta();                                                               \
                                                                                                                   \
         fins::NodeFactory::get_instance().register_node(meta, []() -> fins::INode * { return new UserClass(); }); \

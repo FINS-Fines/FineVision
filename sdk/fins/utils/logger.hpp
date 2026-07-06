@@ -102,26 +102,40 @@ namespace fins {
 
 } // namespace fins
 
+// ══════════════════════════════════════════════════════════════════════
+// DEPRECATED: use node->logger->info() / debug() / warn() / error()
+// instead.  These global macros bypass the per-node log buffer and
+// will be removed in a future release.
+// ══════════════════════════════════════════════════════════════════════
+
 #if FINS_LOG_LEVEL <= FINS_LEVEL_DEBUG
-    #define FINS_LOG_DEBUG(...) fins::Logger::get().log(fins::LogLevel::DEBUG, __VA_ARGS__)
+    #define FINS_LOG_DEBUG(...) \
+        _Pragma("GCC warning \"FINS_LOG_DEBUG is deprecated — use logger->debug() from Node subclass\"") \
+        fins::Logger::get().log(fins::LogLevel::DEBUG, __VA_ARGS__)
 #else
     #define FINS_LOG_DEBUG(...) do {} while(0)
 #endif
 
 #if FINS_LOG_LEVEL <= FINS_LEVEL_INFO
-    #define FINS_LOG_INFO(...)  fins::Logger::get().log(fins::LogLevel::INFO, __VA_ARGS__)
+    #define FINS_LOG_INFO(...) \
+        _Pragma("GCC warning \"FINS_LOG_INFO is deprecated — use logger->info() from Node subclass\"") \
+        fins::Logger::get().log(fins::LogLevel::INFO, __VA_ARGS__)
 #else
-    #define FINS_LOG_INFO(...)  do {} while(0)
+    #define FINS_LOG_INFO(...) do {} while(0)
 #endif
 
 #if FINS_LOG_LEVEL <= FINS_LEVEL_WARN
-    #define FINS_LOG_WARN(...)  fins::Logger::get().log(fins::LogLevel::WARN, __VA_ARGS__)
+    #define FINS_LOG_WARN(...) \
+        _Pragma("GCC warning \"FINS_LOG_WARN is deprecated — use logger->warn() from Node subclass\"") \
+        fins::Logger::get().log(fins::LogLevel::WARN, __VA_ARGS__)
 #else
-    #define FINS_LOG_WARN(...)  do {} while(0)
+    #define FINS_LOG_WARN(...) do {} while(0)
 #endif
 
 #if FINS_LOG_LEVEL <= FINS_LEVEL_ERROR
-    #define FINS_LOG_ERROR(...) fins::Logger::get().log(fins::LogLevel::ERROR, __VA_ARGS__)
+    #define FINS_LOG_ERROR(...) \
+        _Pragma("GCC warning \"FINS_LOG_ERROR is deprecated — use logger->error() from Node subclass\"") \
+        fins::Logger::get().log(fins::LogLevel::ERROR, __VA_ARGS__)
 #else
     #define FINS_LOG_ERROR(...) do {} while(0)
 #endif
