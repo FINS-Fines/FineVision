@@ -128,10 +128,23 @@ public:
 
     // ── Launch ───────────────────────────────────────────────────────
 
-    Agent& launch(const Group& g) {
+    /// Accept any number of Groups.
+    template<typename... Groups>
+    Agent& launch(const Group& first, const Groups&... rest) {
+        wire_group(first);
+        if constexpr (sizeof...(rest) > 0)
+            (wire_group(rest), ...);
+
+        lib_.set_dataflow_json(dataflow_.dump());
+
         auto& studio = Studio::GetInstance();
-        json dataflow;
-        dataflow["nodes"] = json::array();
+        studio.set_topology_order(launched_);
+        return *this;
+    }
+
+private:
+    void wire_group(const Group& g) {
+        auto& studio = Studio::GetInstance();
 
         for (auto& id : g.order_) {
             auto& spec = g.specs_.at(id);
@@ -151,7 +164,6 @@ public:
 
             launched_.push_back(id);
 
-            // Build JSON entry for /get_dataflow
             json j;
             j["id"] = id;
             j["name"] = spec.name;
@@ -170,16 +182,11 @@ public:
                 for (auto& [key, val] : spec.parameters)
                     j["parameters"].push_back({{"name", key}, {"value", val}});
             }
-            dataflow["nodes"].push_back(j);
+            dataflow_["nodes"].push_back(j);
         }
-
-        // Store for /get_dataflow (set_dataflow_json only stores,
-        // it does NOT clear/reload Studio like load_json does)
-        lib_.set_dataflow_json(dataflow.dump());
-
-        studio.set_topology_order(launched_);
-        return *this;
     }
+
+public:
 
     // ── Optional runtime services ────────────────────────────────────
 
@@ -252,6 +259,7 @@ private:
     std::string webui_url_;
     std::unique_ptr<AgentServer> server_;
     std::vector<std::string> launched_;
+    json dataflow_{{"nodes", json::array()}};
     bool threadpool_on_ = false;
     bool timeline_on_ = false;
     bool ros2_on_ = false;
