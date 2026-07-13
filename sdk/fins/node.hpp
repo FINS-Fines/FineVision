@@ -599,8 +599,23 @@ namespace fins {
       };
     }
 
+    // ── fixed-port: Msg<T> ──
+    template<int Port, typename T, typename ClassType>
+    void register_input(const std::string &name, void (ClassType::*method)(const Msg<T> &)) {
+      std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
+      if (meta_.inputs.size() <= static_cast<size_t>(Port))
+        meta_.inputs.resize(Port + 1);
+      meta_.inputs[Port] = {name, type_str};
+      std::type_index expected_id = std::type_index(typeid(T));
+      input_handlers_[Port] = [this, method, expected_id](const AnyMsg &any_msg) {
+        if (any_msg.type_id != expected_id) return;
+        Msg<T> typed_msg(any_msg);
+        (static_cast<ClassType *>(this)->*method)(typed_msg);
+      };
+    }
+
     // ═══════════════════════════════════════════════════════════════
-    // Auto-numbered port variants (same 4 signatures)
+    // Auto-numbered port variants (same 5 signatures)
     // ═══════════════════════════════════════════════════════════════
 
     // ── auto: shared_ptr + AcqTime ──
@@ -668,6 +683,23 @@ namespace fins {
         if (any_msg.type_id != expected_id) return;
         Msg<T> typed_msg(any_msg);
         (static_cast<ClassType *>(this)->*method)(*typed_msg.data);
+      };
+    }
+
+    // ── auto: Msg<T> ──
+    template<typename T, typename ClassType>
+    void register_input(const std::string &name, void (ClassType::*method)(const Msg<T> &)) {
+      int port = next_input_port_++;
+      input_name_to_port_[name] = port;
+      std::string type_str = FINS_TYPE_REGISTER.get_name<T>();
+      if (meta_.inputs.size() <= static_cast<size_t>(port))
+        meta_.inputs.resize(port + 1);
+      meta_.inputs[port] = {name, type_str};
+      std::type_index expected_id = std::type_index(typeid(T));
+      input_handlers_[port] = [this, method, expected_id](const AnyMsg &any_msg) {
+        if (any_msg.type_id != expected_id) return;
+        Msg<T> typed_msg(any_msg);
+        (static_cast<ClassType *>(this)->*method)(typed_msg);
       };
     }
 
